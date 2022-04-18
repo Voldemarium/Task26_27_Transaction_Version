@@ -9,10 +9,13 @@ import Stepanov.homework.Bookstore.ordering.OrderService;
 import Stepanov.homework.Bookstore.ordering_details.BookAndQuanity;
 import Stepanov.homework.Bookstore.ordering_details.OrderingDetailsService;
 import lombok.extern.slf4j.Slf4j;
+import org.hibernate.StaleStateException;
+import org.hibernate.annotations.OptimisticLock;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -21,7 +24,6 @@ import java.util.List;
 @SpringBootApplication
 @EnableCaching
 public class BookstoreApplication {
-
 
     public static void main(String[] args) {
         ConfigurableApplicationContext context = SpringApplication.run(BookstoreApplication.class, args);
@@ -37,7 +39,7 @@ public class BookstoreApplication {
         //   bookService.createBook(new Book("Spring", authorService.getAuthorById(3L), 2005, 240, 700));
         //  bookWarehouseService.createBookWarehouse(new BookWarehouse(bookService.getBookById(17L), 4));
         //        buyerService.createBuyer(new Buyer("Ivanov", "Vladimir", "Ivanovich",
-         //                LocalDate.of(1993, 5, 5)));
+        //                LocalDate.of(1993, 5, 5)));
 
         log.info("Search result books with the author_id 3: {}", bookService.getBooksByAuthorID(3L));
 
@@ -48,14 +50,21 @@ public class BookstoreApplication {
         );
 
         for (int i = 0; i < 3; i++) {
-                new Thread(() ->
-                        orderService.createPurchase(buyerService, bookWarehouseService, orderService, orderingDetailsService,
-                                7L,
-                                List.of(
-                                        new BookAndQuanity(bookService.getBookById(21L), 1),
-                                        new BookAndQuanity(bookService.getBookById(4L), 1)
-                                )
-                        )).start();
+            Runnable task = () -> {
+                try {
+                    orderService.createPurchase(buyerService, bookWarehouseService, orderService, orderingDetailsService,
+                            7L,
+                            List.of(
+                                    new BookAndQuanity(bookService.getBookById(21L), 1),
+                                    new BookAndQuanity(bookService.getBookById(4L), 1)
+                            )
+                    );
+                } catch (StaleStateException | ObjectOptimisticLockingFailureException e) {
+                    log.warn("The book was bought by another buyer");
+                }
+            };
+            Thread thread = new Thread(task);
+            thread.start();
         }
     }
 }
